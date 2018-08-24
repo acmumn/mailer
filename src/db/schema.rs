@@ -30,7 +30,8 @@ table! {
         id -> Unsigned<Integer>,
         mailing_list_id -> Unsigned<Integer>,
         name -> Varchar,
-        template -> Longtext,
+        contents -> Longtext,
+        markdown -> Bool,
     }
 }
 

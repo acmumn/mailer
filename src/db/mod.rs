@@ -13,11 +13,22 @@ use futures::{
     future::{err, poll_fn, Either},
     prelude::*,
 };
+use pulldown_cmark::{self, html::push_html};
 use tera::{Context, Tera};
 use tokio_threadpool::blocking;
 
 use db::schema::{mail_to_send, mail_unsubscribes, mailing_lists, templates};
 use {Error, ErrorKind, Result};
+
+/// An HTML or Markdown document.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum TemplateContents {
+    /// An HTML template.
+    Html(String),
+
+    /// A Markdown template.
+    Markdown(String),
+}
 
 /// A pool of connections to the database.
 #[derive(Clone)]
@@ -43,10 +54,10 @@ impl DB {
     }
 
     /// Gets the next mail item to be sent. The fields are, in order,
-    /// `(id, template_id, email, data)`.
+    /// `(id, mailing_list_id, template_id, to_addr, subject, data)`.
     pub fn get_next_to_send(
         &self,
-    ) -> impl Future<Item = Option<(u32, u32, String, String)>, Error = Error> {
+    ) -> impl Future<Item = Option<(u32, u32, u32, String, String, String)>, Error = Error> {
         self.async_query(move |conn| {
             conn.transaction(|| {
                 let o = mail_to_send::table
@@ -67,22 +78,69 @@ impl DB {
                     )
                     .select((
                         mail_to_send::id,
+                        templates::mailing_list_id,
                         mail_to_send::template_id,
                         mail_to_send::email,
+                        mail_to_send::subject,
                         mail_to_send::data,
                     ))
                     .first(conn)
                     .optional()?;
 
-                if let Some((id, template_id, email, data)) = o {
+                if let Some(data) = o {
+                    let (id, _, _, _, _, _) = data;
                     diesel::update(mail_to_send::table.filter(mail_to_send::id.eq(id)))
                         .set(mail_to_send::send_started.eq(true))
                         .execute(conn)
-                        .map(|_| Some((id, template_id, email, data)))
+                        .map(|_| Some(data))
                 } else {
                     Ok(None)
                 }
             })
+        })
+    }
+
+    /// Gets the raw text of a template.
+    pub fn get_template(
+        &self,
+        mailing_list_id: u32,
+        name: String,
+    ) -> impl Future<Item = TemplateContents, Error = Error> {
+        self.async_query(move |conn| {
+            templates::table
+                .filter(templates::mailing_list_id.eq(mailing_list_id))
+                .filter(templates::name.eq(&name))
+                .select((templates::contents, templates::markdown))
+                .first::<(String, bool)>(conn)
+                .map(|(contents, markdown)| {
+                    if markdown {
+                        TemplateContents::Markdown(contents)
+                    } else {
+                        TemplateContents::Html(contents)
+                    }
+                })
+        })
+    }
+
+    /// Returns a list of mailing lists.
+    pub fn list_mailing_lists(&self) -> impl Future<Item = Vec<(u32, String)>, Error = Error> {
+        self.async_query(move |conn| {
+            mailing_lists::table
+                .select((mailing_lists::id, mailing_lists::name))
+                .load(conn)
+        })
+    }
+
+    /// Returns a list of template names for the given mailing list.
+    pub fn list_templates(
+        &self,
+        mailing_list_id: u32,
+    ) -> impl Future<Item = Vec<String>, Error = Error> {
+        self.async_query(move |conn| {
+            templates::table
+                .filter(templates::mailing_list_id.eq(mailing_list_id))
+                .select(templates::name)
+                .load(conn)
         })
     }
 
@@ -102,12 +160,19 @@ impl DB {
                 .first::<(u32, String)>(conn)?;
             let templates = templates::table
                 .filter(templates::mailing_list_id.eq(mailing_list_id))
-                .select((templates::name, templates::template))
-                .load::<(String, String)>(conn)?;
+                .select((templates::name, templates::contents, templates::markdown))
+                .load::<(String, String, bool)>(conn)?;
 
             let mut tera = Tera::default();
-            for (name, template) in templates {
-                tera.add_raw_template(&name, &template)?;
+            for (name, contents, markdown) in templates {
+                let contents = if markdown {
+                    let mut html = String::new();
+                    push_html(&mut html, pulldown_cmark::Parser::new(&contents));
+                    html
+                } else {
+                    contents
+                };
+                tera.add_raw_template(&name, &contents)?;
             }
             tera.build_inheritance_chains()?;
 
@@ -146,7 +211,7 @@ impl DB {
                     .values((
                         templates::mailing_list_id.eq(mailing_list_id),
                         templates::name.eq(&name),
-                        templates::template.eq(""),
+                        templates::contents.eq(""),
                     ))
                     .execute(conn)?;
                 Ok(())
@@ -170,14 +235,21 @@ impl DB {
         &self,
         mailing_list_id: u32,
         name: String,
-        contents: String,
+        contents: TemplateContents,
     ) -> impl Future<Item = (), Error = Error> {
         self.async_query(move |conn| {
             let target = templates::table
                 .filter(templates::mailing_list_id.eq(mailing_list_id))
                 .filter(templates::name.eq(&name));
+            let (contents, markdown) = match contents {
+                TemplateContents::Html(ref s) => (s, false),
+                TemplateContents::Markdown(ref s) => (s, true),
+            };
             diesel::update(target)
-                .set(templates::template.eq(&contents))
+                .set((
+                    templates::contents.eq(contents),
+                    templates::markdown.eq(markdown),
+                ))
                 .execute(conn)
                 .map(|_| ())
         })

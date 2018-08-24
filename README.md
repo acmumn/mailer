@@ -28,13 +28,13 @@ SYSLOG_SERVER="" # If non-empty, the syslog server to send logs to
 URL Structure
 -------------
 
-### GET `/unsub?email=example@gmail.com&mailing_list=1`
+### GET `/unsubscribe?email=example@gmail.com&list=1`
 
 Serves a form asking the user to confirm that they want to be removed from the list.
 
-### POST `/unsub`
+### POST `/unsubscribe`
 
-The body should contain the same `email` and `mailing_list` parameters as above. Adds a row to the `mail_unsubscribes` table, preventing email form being sent to that address from the given mailing list.
+The body should contain the same `email` and `list` parameters as above. Adds a row to the `mail_unsubscribes` table, preventing email form being sent to that address from the given mailing list.
 
 ### GET `/template/1`
 

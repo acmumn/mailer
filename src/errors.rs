@@ -41,6 +41,10 @@ pub enum ErrorKind {
     #[fail(display = "R2D2 error: {}", _0)]
     R2D2(::diesel::r2d2::PoolError),
 
+    /// An error deserializing JSON data.
+    #[fail(display = "JSON error: {}", _0)]
+    SerdeJson(::serde_json::error::Error),
+
     /// An error from Lettre's SMTP transport.
     #[fail(display = "SMTP error: {}", _0)]
     Smtp(::lettre::smtp::error::Error),
@@ -48,6 +52,10 @@ pub enum ErrorKind {
     /// An error from the Tera template engine.
     #[fail(display = "Template error: {}", _0)]
     Tera(SyncFailure<::tera::Error>),
+
+    /// An error when constructing a URL.
+    #[fail(display = "URL error: {}", _0)]
+    Url(::url::ParseError),
 }
 
 impl From<::diesel::result::Error> for ErrorKind {
@@ -68,6 +76,12 @@ impl From<::diesel::r2d2::PoolError> for ErrorKind {
     }
 }
 
+impl From<::serde_json::error::Error> for ErrorKind {
+    fn from(err: ::serde_json::error::Error) -> ErrorKind {
+        ErrorKind::SerdeJson(err)
+    }
+}
+
 impl From<::lettre::smtp::error::Error> for ErrorKind {
     fn from(err: ::lettre::smtp::error::Error) -> ErrorKind {
         ErrorKind::Smtp(err)
@@ -77,6 +91,12 @@ impl From<::lettre::smtp::error::Error> for ErrorKind {
 impl From<::tera::Error> for ErrorKind {
     fn from(err: ::tera::Error) -> ErrorKind {
         ErrorKind::Tera(SyncFailure::new(err))
+    }
+}
+
+impl From<::url::ParseError> for ErrorKind {
+    fn from(err: ::url::ParseError) -> ErrorKind {
+        ErrorKind::Url(err)
     }
 }
 

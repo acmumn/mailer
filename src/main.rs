@@ -18,11 +18,14 @@ extern crate warp;
 
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::process::exit;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use failure::Error;
-use futures::Future;
+use futures::{Future, Stream};
 use mailer::{sweep, util::log_err, Mailer, DB};
 use structopt::StructOpt;
+use tokio::timer::Interval;
 use tokio_threadpool::ThreadPool;
 use url::Url;
 
@@ -52,10 +55,22 @@ fn run(options: Options) -> Result<(), Error> {
     //let routes = web::routes(db, mailer, options.auth_server, options.base_url);
     //let server = warp::serve(routes).bind(addr);
 
-    let thread_pool = ThreadPool::new();
-    thread_pool.spawn(sweep(db, mailer).map_err(|e| log_err(e.into())));
+    let thread_pool = Arc::new(ThreadPool::new());
+    let sweeper = Interval::new(Instant::now(), Duration::from_secs(5 * 60))
+        .map_err(Error::from)
+        .for_each({
+            let base_url = Arc::new(options.base_url);
+            let db = db.clone();
+            let thread_pool = thread_pool.clone();
+            move |_| {
+                let fut = sweep(db.clone(), mailer.clone(), base_url.clone());
+                Ok(thread_pool.spawn(fut.map_err(|e| log_err(e.into()))))
+            }
+        })
+        .map_err(log_err);
     //thread_pool.spawn(server);
-    tokio::run(thread_pool.shutdown_on_idle());
+
+    tokio::run(sweeper);
     Ok(())
 }
 
