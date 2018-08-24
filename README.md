@@ -17,7 +17,7 @@ SMTP_PASS="hunter2" # SMTP password
 SMTP_USER="example@gmail.com" # SMTP username
 
 # Optional
-AUTH_SERVER="" # If non-empty, the auth server to use
+AUTH_SERVER="http://auth/" # The URL of the auth server to use
 HOST="::" # IP to bind to
 PORT=8000 # Port to serve unsub links and template examples on
 SMTP_ADDR="smtp.gmail.com" # SMTP server hostname
