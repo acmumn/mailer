@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
-use failure::{Backtrace, Context, Fail};
+use failure::{Backtrace, Context, Fail, SyncFailure};
 
 /// A convenient alias for Result.
 pub type Result<T> = ::std::result::Result<T, Error>;
@@ -40,6 +40,10 @@ pub enum ErrorKind {
     /// An error from Lettre's SMTP transport.
     #[fail(display = "SMTP error: {}", _0)]
     Smtp(::lettre::smtp::error::Error),
+
+    /// An error from the Tera template engine.
+    #[fail(display = "Template error: {}", _0)]
+    Tera(SyncFailure<::tera::Error>),
 }
 
 impl From<::diesel::result::Error> for ErrorKind {
@@ -57,6 +61,12 @@ impl From<::diesel::r2d2::PoolError> for ErrorKind {
 impl From<::lettre::smtp::error::Error> for ErrorKind {
     fn from(err: ::lettre::smtp::error::Error) -> ErrorKind {
         ErrorKind::Smtp(err)
+    }
+}
+
+impl From<::tera::Error> for ErrorKind {
+    fn from(err: ::tera::Error) -> ErrorKind {
+        ErrorKind::Tera(SyncFailure::new(err))
     }
 }
 

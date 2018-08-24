@@ -4,7 +4,6 @@ use failure::Error;
 use futures::{future::poll_fn, prelude::*};
 use lettre::{smtp::authentication::Credentials, EmailTransport, SmtpTransport};
 use lettre_email::EmailBuilder;
-use tera::Tera;
 use tokio_threadpool::blocking;
 
 use errors::Result;

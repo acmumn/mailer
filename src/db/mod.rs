@@ -13,9 +13,10 @@ use futures::{
     future::{err, poll_fn, Either},
     prelude::*,
 };
+use tera::Tera;
 use tokio_threadpool::blocking;
 
-pub use db::schema::{mail_to_send, mail_unsubscribes, mailing_lists, templates};
+use db::schema::{mail_to_send, mail_unsubscribes, mailing_lists, templates};
 use {Error, ErrorKind, Result};
 
 /// A pool of connections to the database.
@@ -29,6 +30,85 @@ impl DB {
     pub fn connect(database_url: &str) -> Result<DB> {
         let pool = Arc::new(Pool::new(ConnectionManager::new(database_url))?);
         Ok(DB { pool })
+    }
+
+    /// Gets a mailing list's ID from its name.
+    pub fn get_mailing_list_id(&self, name: String) -> impl Future<Item = u32, Error = Error> {
+        self.async_query(move |conn| {
+            mailing_lists::table
+                .filter(mailing_lists::name.eq(&name))
+                .select(mailing_lists::id)
+                .first(conn)
+        })
+    }
+
+    /// Gets the next mail item to be sent. The fields are, in order,
+    /// `(id, template_id, email, data)`.
+    pub fn get_next_to_send(
+        &self,
+    ) -> impl Future<Item = Option<(u32, u32, String, String)>, Error = Error> {
+        self.async_query(move |conn| {
+            conn.transaction(|| {
+                let o = mail_to_send::table
+                    .inner_join(templates::table)
+                    .inner_join(
+                        mailing_lists::table.on(templates::mailing_list_id.eq(mailing_lists::id)),
+                    )
+                    .left_join(
+                        mail_unsubscribes::table
+                            .on(mail_to_send::email.eq(mail_unsubscribes::email)),
+                    )
+                    .filter(
+                        diesel::dsl::not(
+                            mail_unsubscribes::email
+                                .is_not_null()
+                                .and(mail_unsubscribes::mailing_list_id.eq(mailing_lists::id)),
+                        ).and(mail_to_send::send_started.eq(false)),
+                    )
+                    .select((
+                        mail_to_send::id,
+                        mail_to_send::template_id,
+                        mail_to_send::email,
+                        mail_to_send::data,
+                    ))
+                    .first(conn)
+                    .optional()?;
+
+                if let Some((id, template_id, email, data)) = o {
+                    diesel::update(mail_to_send::table.filter(mail_to_send::id.eq(id)))
+                        .set(mail_to_send::send_started.eq(true))
+                        .execute(conn)
+                        .map(|_| Some((id, template_id, email, data)))
+                } else {
+                    Ok(None)
+                }
+            })
+        })
+    }
+
+    /// Loads a template recursively, returning a Tera instance with the required templates, as
+    /// well as the template's name.
+    pub fn load_template(&self, id: u32) -> impl Future<Item = (Tera, String), Error = Error> {
+        // This can be made a lot more efficient when https://github.com/Keats/tera/issues/322 is
+        // resolved. There also may be a more efficient way to write the query (to do one instead
+        // of two), but that's probably small potatoes.
+        self.async_query(move |conn| -> Result<_> {
+            let (mailing_list_id, name) = templates::table
+                .filter(templates::id.eq(id))
+                .select((templates::mailing_list_id, templates::name))
+                .first::<(u32, String)>(conn)?;
+            let templates = templates::table
+                .filter(templates::mailing_list_id.eq(mailing_list_id))
+                .select((templates::name, templates::template))
+                .load::<(String, String)>(conn)?;
+
+            let mut tera = Tera::default();
+            for (name, template) in templates {
+                tera.add_raw_template(&name, &template)?;
+            }
+            tera.build_inheritance_chains()?;
+            Ok((tera, name))
+        })
     }
 
     /// Creates a new mailing list with the given name.
@@ -70,80 +150,11 @@ impl DB {
         })
     }
 
-    /// Gets a mailing list's ID from its name.
-    pub fn get_mailing_list(&self, name: String) -> impl Future<Item = u32, Error = Error> {
-        self.async_query(move |conn| {
-            mailing_lists::table
-                .filter(mailing_lists::name.eq(&name))
-                .select(mailing_lists::id)
-                .first(conn)
-        })
-    }
-
-    /// Gets the next mail item to be sent. The fields are, in order,
-    /// `(id, email, data, template_name, template_data)`.
-    pub fn get_next_to_send(
-        &self,
-    ) -> impl Future<Item = Option<(u32, String, String, String, String)>, Error = Error> {
-        self.async_query(move |conn| {
-            conn.transaction(|| {
-                let o = mail_to_send::table
-                    .inner_join(templates::table)
-                    .inner_join(
-                        mailing_lists::table.on(templates::mailing_list_id.eq(mailing_lists::id)),
-                    )
-                    .left_join(
-                        mail_unsubscribes::table
-                            .on(mail_to_send::email.eq(mail_unsubscribes::email)),
-                    )
-                    .filter(
-                        diesel::dsl::not(
-                            mail_unsubscribes::email
-                                .is_not_null()
-                                .and(mail_unsubscribes::mailing_list_id.eq(mailing_lists::id)),
-                        ).and(mail_to_send::send_started.eq(false)),
-                    )
-                    .select((
-                        mail_to_send::id,
-                        mail_to_send::email,
-                        mail_to_send::data,
-                        templates::name,
-                        templates::template,
-                    ))
-                    .first(conn)
-                    .optional()?;
-
-                if let Some((id, email, data, template_name, template_data)) = o {
-                    diesel::update(mail_to_send::table.filter(mail_to_send::id.eq(id)))
-                        .set(mail_to_send::send_started.eq(true))
-                        .execute(conn)
-                        .map(|_| Some((id, email, data, template_name, template_data)))
-                } else {
-                    Ok(None)
-                }
-            })
-        })
-    }
-
-    /// Gets a template from the given list with the given name from the database.
-    pub fn get_template(
-        &self,
-        mailing_list_id: u32,
-        name: String,
-    ) -> impl Future<Item = String, Error = Error> {
-        self.async_query(move |conn| {
-            templates::table
-                .filter(templates::mailing_list_id.eq(mailing_list_id))
-                .filter(templates::name.eq(&name))
-                .select(templates::template)
-                .first(conn)
-        })
-    }
-
     /// Marks the sending of an email (by ID) as finished.
     pub fn set_email_done(&self, id: u32) -> impl Future<Item = (), Error = Error> {
         self.async_query(move |conn| {
             diesel::update(mail_to_send::table.filter(mail_to_send::id.eq(id)))
+                .filter(mail_to_send::send_started.eq(true))
                 .set(mail_to_send::send_done.eq(true))
                 .execute(conn)
                 .map(|_| ())
@@ -168,90 +179,22 @@ impl DB {
         })
     }
 
-    /*
-
-    /// Checks whether a login UUID is valid, returning the relevant member ID.
-    pub fn check_login_link(&self, uuid: Uuid) -> impl Future<Item = MemberID, Error = Error> {
+    /// Marks a user as having unsubscribed from the given mailing list.
+    pub fn unsubscribe(
+        &self,
+        email: String,
+        mailing_list_id: u32,
+    ) -> impl Future<Item = (), Error = Error> {
         self.async_query(move |conn| {
-            conn.transaction(|| {
-                let (id, member_id, created): (u32, _, _) = jwt_escrow::table
-                    .select((jwt_escrow::id, jwt_escrow::member_id, jwt_escrow::created))
-                    .filter(jwt_escrow::secret.eq(uuid.as_bytes() as &[u8]))
-                    .first(conn)?;
-                diesel::delete(jwt_escrow::table)
-                    .filter(jwt_escrow::id.eq(id))
-                    .execute(conn)?;
-                let created = DateTime::<Utc>::from_utc(created, Utc);
-                if Utc::now().signed_duration_since(created) > Duration::hours(24) {
-                    Err(Error::from(LoginLinkExpired))
-                } else {
-                    Ok(member_id)
-                }
-            })
-        })
-    }
-
-    /// Creates a new login UUID for the member with the given ID, returning it.
-    pub fn create_login_link(&self, id: MemberID) -> impl Future<Item = Uuid, Error = Error> {
-        let uuid = Uuid::new_v4();
-        self.async_query(move |conn| {
-            diesel::insert_into(jwt_escrow::table)
+            diesel::insert_into(mail_unsubscribes::table)
                 .values((
-                    jwt_escrow::member_id.eq(id),
-                    jwt_escrow::secret.eq(uuid.as_bytes() as &[u8]),
+                    mail_unsubscribes::email.eq(&email),
+                    mail_unsubscribes::mailing_list_id.eq(mailing_list_id),
                 ))
                 .execute(conn)
-                .map(|_| uuid)
+                .map(|_| ())
         })
     }
-
-    /// Gets a member by ID.
-    pub fn get_member(&self, id: MemberID) -> impl Future<Item = Member, Error = Error> {
-        self.async_query(move |conn| members::table.filter(members::id.eq(id)).first(conn))
-    }
-
-    /// Gets an ID number by X.500.
-    pub fn get_id(&self, x500: String) -> impl Future<Item = MemberID, Error = Error> {
-        self.async_query(move |conn| {
-            members::table
-                .filter(members::x500.eq(&x500))
-                .select(members::id)
-                .first(conn)
-        })
-    }
-
-    /// Checks if a member is an admin.
-    pub fn is_admin(&self, id: MemberID) -> impl Future<Item = bool, Error = Error> {
-        self.async_query(move |conn| {
-            members::table
-                .filter(members::id.eq(id))
-                .select(members::admin)
-                .first(conn)
-        })
-    }
-
-    /// Lists all members in the database.
-    pub fn list_members(&self) -> impl Future<Item = Vec<Member>, Error = Error> {
-        self.async_query(|conn| members::table.load(conn))
-    }
-
-    /// Lists all members who are in good standing with regards to payment at the given time.
-    pub fn list_paid_members<Tz: TimeZone>(
-        &self,
-        time: DateTime<Tz>,
-    ) -> impl Future<Item = Vec<Member>, Error = Error> {
-        let time = time.naive_utc();
-        self.async_query(move |conn| {
-            payments::table
-                .filter(payments::date_from.lt(time))
-                .filter(payments::date_to.ge(time))
-                .inner_join(members::table)
-                .select(members::all_columns)
-                .load(conn)
-        })
-    }
-
-    */
 
     fn async_query<E, F, T>(&self, func: F) -> impl Future<Item = T, Error = Error>
     where

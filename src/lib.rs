@@ -17,7 +17,7 @@ extern crate tokio_threadpool;
 //#[macro_use]
 //mod macros;
 
-pub mod db;
+mod db;
 mod errors;
 mod mailer;
 pub mod util;
