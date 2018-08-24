@@ -13,7 +13,7 @@ use futures::{
     future::{err, poll_fn, Either},
     prelude::*,
 };
-use tera::Tera;
+use tera::{Context, Tera};
 use tokio_threadpool::blocking;
 
 use db::schema::{mail_to_send, mail_unsubscribes, mailing_lists, templates};
@@ -88,7 +88,10 @@ impl DB {
 
     /// Loads a template recursively, returning a Tera instance with the required templates, as
     /// well as the template's name.
-    pub fn load_template(&self, id: u32) -> impl Future<Item = (Tera, String), Error = Error> {
+    pub fn load_template(
+        &self,
+        id: u32,
+    ) -> impl Future<Item = impl Fn(Context) -> Result<String>, Error = Error> {
         // This can be made a lot more efficient when https://github.com/Keats/tera/issues/322 is
         // resolved. There also may be a more efficient way to write the query (to do one instead
         // of two), but that's probably small potatoes.
@@ -107,7 +110,8 @@ impl DB {
                 tera.add_raw_template(&name, &template)?;
             }
             tera.build_inheritance_chains()?;
-            Ok((tera, name))
+
+            Ok(move |data| tera.render(&name, &data).map_err(Error::from))
         })
     }
 

@@ -1,12 +1,11 @@
 use std::sync::{Arc, Mutex};
 
-use failure::Error;
 use futures::{future::poll_fn, prelude::*};
 use lettre::{smtp::authentication::Credentials, EmailTransport, SmtpTransport};
 use lettre_email::EmailBuilder;
 use tokio_threadpool::blocking;
 
-use errors::Result;
+use errors::{Error, ErrorKind, Result};
 
 /// The mailer. Cheaply clonable.
 #[derive(Clone)]
@@ -40,7 +39,22 @@ impl Mailer {
         })
     }
 
-    fn send_mail(&self, email: EmailBuilder) -> impl Future<Item = (), Error = Error> {
+    pub fn send_mail(
+        &self,
+        to: String,
+        subject: String,
+        body: String,
+    ) -> impl Future<Item = (), Error = Error> {
+        let builder = EmailBuilder::new()
+            .from(&self.inner.from as &str)
+            .to(to)
+            .reply_to(&self.inner.reply_to as &str)
+            .subject(subject)
+            .html(body);
+        self.send_builder(builder)
+    }
+
+    fn send_builder(&self, email: EmailBuilder) -> impl Future<Item = (), Error = Error> {
         let transport = self.transport.clone();
         email
             .build()
@@ -55,7 +69,7 @@ impl Mailer {
                         if r.is_positive() {
                             Ok(())
                         } else {
-                            Err(format_err!("SMTP error: {}", r.code))
+                            Err(ErrorKind::Smtp(r.into()).into())
                         }
                     })
                 })

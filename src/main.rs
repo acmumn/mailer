@@ -1,6 +1,7 @@
 extern crate dotenv;
 #[macro_use]
 extern crate failure;
+extern crate futures;
 #[cfg(not(debug_assertions))]
 #[macro_use]
 extern crate human_panic;
@@ -19,7 +20,8 @@ use std::net::{SocketAddr, ToSocketAddrs};
 use std::process::exit;
 
 use failure::Error;
-use mailer::{util::log_err, Mailer, DB};
+use futures::Future;
+use mailer::{sweep, util::log_err, Mailer, DB};
 use structopt::StructOpt;
 use tokio_threadpool::ThreadPool;
 use url::Url;
@@ -51,6 +53,7 @@ fn run(options: Options) -> Result<(), Error> {
     //let server = warp::serve(routes).bind(addr);
 
     let thread_pool = ThreadPool::new();
+    thread_pool.spawn(sweep(db, mailer).map_err(|e| log_err(e.into())));
     //thread_pool.spawn(server);
     tokio::run(thread_pool.shutdown_on_idle());
     Ok(())

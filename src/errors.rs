@@ -33,6 +33,10 @@ pub enum ErrorKind {
     #[fail(display = "Diesel error: {}", _0)]
     Diesel(::diesel::result::Error),
 
+    /// An error from Lettre's mail builder.
+    #[fail(display = "Mail builder error: {}", _0)]
+    Mail(::lettre_email::error::Error),
+
     /// An error from R2D2.
     #[fail(display = "R2D2 error: {}", _0)]
     R2D2(::diesel::r2d2::PoolError),
@@ -49,6 +53,12 @@ pub enum ErrorKind {
 impl From<::diesel::result::Error> for ErrorKind {
     fn from(err: ::diesel::result::Error) -> ErrorKind {
         ErrorKind::Diesel(err)
+    }
+}
+
+impl From<::lettre_email::error::Error> for ErrorKind {
+    fn from(err: ::lettre_email::error::Error) -> ErrorKind {
+        ErrorKind::Mail(err)
     }
 }
 
