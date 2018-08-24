@@ -11,7 +11,7 @@ Configured via either environment variables or a `.env` file. The following envi
 ```
 # Required
 BASE_URL="https://mail.acm.umn.edu/" # Base URL for unsub links and template examples
-MAILER_DATABASE_URL="mysql://root:password@localhost/mailer" # MySQL database URL
+DATABASE_URL="mysql://root:password@localhost/mailer" # MySQL database URL
 SMTP_FROM="example@gmail.com" # SMTP From header
 SMTP_PASS="hunter2" # SMTP password
 SMTP_USER="example@gmail.com" # SMTP username
