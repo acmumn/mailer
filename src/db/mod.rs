@@ -6,7 +6,6 @@ use std::sync::Arc;
 
 use diesel::{
     self,
-    dsl::now,
     prelude::*,
     r2d2::{ConnectionManager, Pool},
 };
@@ -16,7 +15,7 @@ use futures::{
 };
 use tokio_threadpool::blocking;
 
-use db::schema::{mail_to_send, mail_unsubscribes, mailing_lists, templates};
+pub use db::schema::{mail_to_send, mail_unsubscribes, mailing_lists, templates};
 use {Error, ErrorKind, Result};
 
 /// A pool of connections to the database.
@@ -81,14 +80,48 @@ impl DB {
         })
     }
 
-    /// Gets the next mail item to be sent.
-    pub fn get_next_to_send(&self) -> impl Future<Item = (), Error = Error> {
+    /// Gets the next mail item to be sent. The fields are, in order,
+    /// `(id, email, data, template_name, template_data)`.
+    pub fn get_next_to_send(
+        &self,
+    ) -> impl Future<Item = Option<(u32, String, String, String, String)>, Error = Error> {
         self.async_query(move |conn| {
-            mail_to_send::table
-                .inner_join(templates::table)
-                .filter(mail_to_send::created.le(now))
-                .filter(mail_to_send::sent.is_null())
-                .first(conn)
+            conn.transaction(|| {
+                let o = mail_to_send::table
+                    .inner_join(templates::table)
+                    .inner_join(
+                        mailing_lists::table.on(templates::mailing_list_id.eq(mailing_lists::id)),
+                    )
+                    .left_join(
+                        mail_unsubscribes::table
+                            .on(mail_to_send::email.eq(mail_unsubscribes::email)),
+                    )
+                    .filter(
+                        diesel::dsl::not(
+                            mail_unsubscribes::email
+                                .is_not_null()
+                                .and(mail_unsubscribes::mailing_list_id.eq(mailing_lists::id)),
+                        ).and(mail_to_send::send_started.eq(false)),
+                    )
+                    .select((
+                        mail_to_send::id,
+                        mail_to_send::email,
+                        mail_to_send::data,
+                        templates::name,
+                        templates::template,
+                    ))
+                    .first(conn)
+                    .optional()?;
+
+                if let Some((id, email, data, template_name, template_data)) = o {
+                    diesel::update(mail_to_send::table.filter(mail_to_send::id.eq(id)))
+                        .set(mail_to_send::send_started.eq(true))
+                        .execute(conn)
+                        .map(|_| Some((id, email, data, template_name, template_data)))
+                } else {
+                    Ok(None)
+                }
+            })
         })
     }
 
@@ -104,6 +137,16 @@ impl DB {
                 .filter(templates::name.eq(&name))
                 .select(templates::template)
                 .first(conn)
+        })
+    }
+
+    /// Marks the sending of an email (by ID) as finished.
+    pub fn set_email_done(&self, id: u32) -> impl Future<Item = (), Error = Error> {
+        self.async_query(move |conn| {
+            diesel::update(mail_to_send::table.filter(mail_to_send::id.eq(id)))
+                .set(mail_to_send::send_done.eq(true))
+                .execute(conn)
+                .map(|_| ())
         })
     }
 

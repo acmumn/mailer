@@ -11,8 +11,9 @@ table! {
         template_id -> Unsigned<Integer>,
         data -> Longtext,
         email -> Varchar,
-        created -> Timestamp,
-        sent -> Timestamp,
+        subject -> Varchar,
+        send_started -> Bool,
+        send_done -> Bool,
     }
 }
 
