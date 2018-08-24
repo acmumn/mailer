@@ -16,7 +16,7 @@ CREATE TABLE mail_to_send
 	( id          INTEGER UNSIGNED AUTO_INCREMENT PRIMARY KEY
 	, template_id INTEGER UNSIGNED NOT NULL
 	, data   LONGTEXT NOT NULL -- This is JSON, but Maria's JSON type is just an alias for LONGTEXT
-	    -- (and only very recently supported). Note that even on real MySQL, the JSON type may not
+		-- (and only very recently supported). Note that even on real MySQL, the JSON type may not
 		-- be warranted: the main advantage is that JSON functions are faster on MySQL, but we
 		-- don't actually use these.
 	, email       VARCHAR(128) NOT NULL

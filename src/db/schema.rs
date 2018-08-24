@@ -9,7 +9,7 @@ table! {
     mail_to_send (id) {
         id -> Unsigned<Integer>,
         template_id -> Unsigned<Integer>,
-        mail_data -> Longtext,
+        data -> Longtext,
         email -> Varchar,
         created -> Timestamp,
         sent -> Timestamp,
