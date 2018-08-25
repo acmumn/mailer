@@ -2,7 +2,7 @@ all: check doc build-debug test
 clean:
 	cargo clean
 watch TARGET="all":
-	watchexec -cre rs,toml "just {{TARGET}}"
+	watchexec -cre css,html,rs,toml "just {{TARGET}}"
 
 bench:
 	cargo +nightly bench --all

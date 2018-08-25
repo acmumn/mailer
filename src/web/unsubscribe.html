@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+
+{% block title %}Unsubscribe from {{ name }}{% endblock title %}
+
+{% block main %}
+	<p>This will unsubscribe {{ email }} from the mailing list {{ name }}.</p>
+	<form method="post">
+		<input name="email" type="hidden" value="{{ email }}">
+		<button type="submit" class="btn btn-primary">Unsubscribe</button>
+	</form>
+{% endblock main %}

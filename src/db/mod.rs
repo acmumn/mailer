@@ -53,6 +53,16 @@ impl DB {
         })
     }
 
+    /// Gets a mailing list's name from its ID.
+    pub fn get_mailing_list_name(&self, id: u32) -> impl Future<Item = String, Error = Error> {
+        self.async_query(move |conn| {
+            mailing_lists::table
+                .filter(mailing_lists::id.eq(id))
+                .select(mailing_lists::name)
+                .first(conn)
+        })
+    }
+
     /// Gets the next mail item to be sent. The fields are, in order,
     /// `(id, mailing_list_id, template_id, to_addr, subject, data)`.
     pub fn get_next_to_send(

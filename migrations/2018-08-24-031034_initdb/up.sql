@@ -10,7 +10,7 @@ CREATE TABLE templates
     , mailing_list_id INTEGER UNSIGNED NOT NULL
     , name            VARCHAR(128) NOT NULL
     , contents        LONGTEXT NOT NULL
-	, markdown        BOOLEAN NOT NULL DEFAULT false
+    , markdown        BOOLEAN NOT NULL DEFAULT false
     , FOREIGN KEY (mailing_list_id) REFERENCES mailing_lists(id)
     );
 CREATE TABLE mail_to_send

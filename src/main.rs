@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 
 use failure::Error;
 use futures::{Future, Stream};
-use mailer::{sweep, util::log_err, Mailer, DB};
+use mailer::{log_err, routes, sweep, Mailer, DB};
 use structopt::StructOpt;
 use tokio::timer::Interval;
 use tokio_threadpool::ThreadPool;
@@ -52,23 +52,19 @@ fn run(options: Options) -> Result<(), Error> {
         options.smtp_reply_to,
     )?;
 
-    //let routes = web::routes(db, mailer, options.auth_server, options.base_url);
-    //let server = warp::serve(routes).bind(addr);
+    let base_url = Arc::new(options.base_url);
+    let routes = routes(db.clone(), options.auth_server, base_url.clone());
+    let server = warp::serve(routes).bind(serve_addr);
 
-    let thread_pool = Arc::new(ThreadPool::new());
+    let thread_pool = ThreadPool::new();
+    thread_pool.spawn(server);
     let sweeper = Interval::new(Instant::now(), Duration::from_secs(5 * 60))
         .map_err(Error::from)
-        .for_each({
-            let base_url = Arc::new(options.base_url);
-            let db = db.clone();
-            let thread_pool = thread_pool.clone();
-            move |_| {
-                let fut = sweep(db.clone(), mailer.clone(), base_url.clone());
-                Ok(thread_pool.spawn(fut.map_err(|e| log_err(e.into()))))
-            }
+        .for_each(move |_| {
+            let fut = sweep(db.clone(), mailer.clone(), base_url.clone());
+            Ok(thread_pool.spawn(fut.map_err(|e| log_err(e.into()))))
         })
         .map_err(log_err);
-    //thread_pool.spawn(server);
 
     tokio::run(sweeper);
     Ok(())

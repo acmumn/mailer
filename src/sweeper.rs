@@ -4,7 +4,7 @@ use futures::{prelude::*, stream::poll_fn};
 use serde_json::{self, Value};
 use url::Url;
 
-use {util::log_err, Error, Mailer, DB};
+use {log_err, Error, Mailer, DB};
 
 /// Sweeps all unsent emails from the database (by sending them).
 pub fn sweep(db: DB, mailer: Mailer, base_url: Arc<Url>) -> impl Future<Item = (), Error = Error> {
@@ -19,12 +19,13 @@ pub fn sweep(db: DB, mailer: Mailer, base_url: Arc<Url>) -> impl Future<Item = (
                 db.load_template(template_id)
                     .join(serde_json::from_str::<Value>(&data).map_err(Error::from))
                     .and_then(move |(render, data)| {
-                        let mut unsubscribe = base_url.join("unsubscribe")?;
+                        let mut unsubscribe = base_url
+                            .join("unsubscribe")?
+                            .join(&mailing_list_id.to_string())?;
                         unsubscribe
                             .query_pairs_mut()
                             .clear()
-                            .append_pair("email", &to_addr)
-                            .append_pair("list", &mailing_list_id.to_string());
+                            .append_pair("email", &to_addr);
                         render(context! {data: data, unsubscribe: unsubscribe.to_string()})
                             .map(|body| (to_addr, body))
                     })

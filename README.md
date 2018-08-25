@@ -10,14 +10,14 @@ Configured via either environment variables or a `.env` file. The following envi
 
 ```
 # Required
-BASE_URL="https://mail.acm.umn.edu/" # Base URL for unsub links and template examples
+BASE_URL="https://mail.acm.umn.edu" # Base URL for unsub links and template examples
 DATABASE_URL="mysql://root:password@localhost/mailer" # MySQL database URL
 SMTP_FROM="example@gmail.com" # SMTP From header
 SMTP_PASS="hunter2" # SMTP password
 SMTP_USER="example@gmail.com" # SMTP username
 
 # Optional
-AUTH_SERVER="http://auth/" # The URL of the auth server to use
+AUTH_SERVER="http://auth" # The URL of the auth server to use
 HOST="::" # IP to bind to
 PORT=8000 # Port to serve unsub links and template examples on
 SMTP_ADDR="smtp.gmail.com" # SMTP server hostname
