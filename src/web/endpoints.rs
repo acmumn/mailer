@@ -28,6 +28,19 @@ pub fn template(
 }
 
 #[derive(Deserialize)]
+pub struct SendParams {
+    mailing_list: String,
+    template: String,
+    data: String,
+    email: String,
+    subject: String,
+}
+
+pub fn send(params: SendParams, db: DB) -> impl Future<Item = Response<String>, Error = Error> {
+    Ok(unimplemented!()).into_future()
+}
+
+#[derive(Deserialize)]
 pub struct UnsubscribeParams {
     email: String,
 }

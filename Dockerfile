@@ -1,6 +1,5 @@
 FROM rust:latest
 WORKDIR /usr/src/mailer
-RUN cargo install diesel_cli --no-default-features --features mysql
 COPY . .
 RUN cargo build --release
 

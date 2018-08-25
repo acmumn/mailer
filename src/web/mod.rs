@@ -74,6 +74,7 @@ pub fn routes(
 
     let db2 = db.clone();
     let db3 = db.clone();
+    let db4 = db.clone();
 
     warp::index()
         .map(move || render("index.html", Context::new()))
@@ -83,6 +84,24 @@ pub fn routes(
                 .insert(CONTENT_TYPE, HeaderValue::from_static("text/css"));
             res
         }))
+        .or(path!("send")
+            .and(warp::index())
+            .and(warp::post2())
+            .and(warp::body::form())
+            .and_then(move |params| {
+                send(params, db.clone()).map_err(|e| {
+                    log_err(e.into());
+                    reject::server_error()
+                })
+            }))
+        .or(path!("status")
+            .and(warp::index())
+            .and(warp::get2())
+            .map(|| {
+                let mut res = Response::new("".to_string());
+                *res.status_mut() = StatusCode::NO_CONTENT;
+                res
+            }))
         .or(path!("template" / u32)
             .and(warp::index())
             .and(
@@ -96,7 +115,7 @@ pub fn routes(
                 for (k, v) in values {
                     context.add(&k, &v);
                 }
-                template(template_id, context, auth_server_url.as_ref(), db.clone()).map_err(|e| {
+                template(template_id, context, auth_server_url.as_ref(), db2.clone()).map_err(|e| {
                     log_err(e.into());
                     reject::server_error()
                 })
@@ -106,7 +125,7 @@ pub fn routes(
             .and(warp::get2())
             .and(warp::query())
             .and_then(move |mailing_list_id, params| {
-                unsubscribe_get(mailing_list_id, params, db2.clone(), render2.clone()).map_err(
+                unsubscribe_get(mailing_list_id, params, db3.clone(), render2.clone()).map_err(
                     |e| {
                         log_err(e.into());
                         reject::server_error()
@@ -118,7 +137,7 @@ pub fn routes(
             .and(warp::post2())
             .and(warp::body::form())
             .and_then(move |mailing_list_id, params| {
-                unsubscribe_post(mailing_list_id, params, db3.clone(), render3.clone()).map_err(
+                unsubscribe_post(mailing_list_id, params, db4.clone(), render3.clone()).map_err(
                     |e| {
                         log_err(e.into());
                         reject::server_error()

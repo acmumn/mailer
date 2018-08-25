@@ -43,16 +43,6 @@ impl DB {
         Ok(DB { pool })
     }
 
-    /// Gets a mailing list's ID from its name.
-    pub fn get_mailing_list_id(&self, name: String) -> impl Future<Item = u32, Error = Error> {
-        self.async_query(move |conn| {
-            mailer_lists::table
-                .filter(mailer_lists::name.eq(&name))
-                .select(mailer_lists::id)
-                .first(conn)
-        })
-    }
-
     /// Gets a mailing list's name from its ID.
     pub fn get_mailing_list_name(&self, id: u32) -> impl Future<Item = String, Error = Error> {
         self.async_query(move |conn| {
@@ -112,7 +102,7 @@ impl DB {
     }
 
     /// Gets the raw text of a template.
-    pub fn get_template(
+    fn get_template(
         &self,
         mailing_list_id: u32,
         name: String,
