@@ -17,6 +17,7 @@ pub fn template(
     db: DB,
 ) -> impl Future<Item = Response<String>, Error = Error> {
     if let Some(auth_server_url) = auth_server_url {
+        // TODO: Check auth
         Either::A(
             db.load_template(id)
                 .and_then(move |render| render(context).map(Response::new)),
