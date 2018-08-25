@@ -21,18 +21,12 @@ test:
 	cargo test --all
 
 build-docker:
-	@echo TODO; exit 1
+	docker build -t acmumn/mailer .
 outdated-deps:
 	cargo outdated -R
 
 run +ARGS="":
 	cargo run -- {{ARGS}}
 
-reset-database:
-	@echo "         ABOUT TO NUKE MYSQL"
-	@echo "IF YOU'RE NOT SURE WHERE, ASSUME PROD"
-	@echo "HIT ^C IN THE NEXT 5 SECONDS TO CANCEL"
-	@sleep 5
-	diesel database reset
-update-schema: reset-database
+update-schema:
 	diesel print-schema > src/db/schema.rs

@@ -2,9 +2,6 @@ extern crate dotenv;
 #[macro_use]
 extern crate failure;
 extern crate futures;
-#[cfg(not(debug_assertions))]
-#[macro_use]
-extern crate human_panic;
 #[macro_use]
 extern crate log;
 extern crate mailer;
@@ -32,7 +29,6 @@ use url::Url;
 fn main() {
     dotenv::dotenv().ok();
     let options = Options::from_args();
-    options.setup_panic();
     options.start_logger();
 
     if let Err(err) = run(options) {
@@ -136,18 +132,6 @@ impl Options {
             bail!("No matching address exists")
         } else {
             Ok(addrs[0])
-        }
-    }
-
-    /// Sets up the panic handler.
-    #[cfg(debug_assertions)]
-    fn setup_panic(&self) {}
-
-    /// Sets up the panic handler.
-    #[cfg(not(debug_assertions))]
-    fn setup_panic(&self) {
-        if self.verbose == 0 {
-            setup_panic!();
         }
     }
 

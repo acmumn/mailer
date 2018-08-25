@@ -38,8 +38,24 @@ The body should contain the same `email` parameter as above. Adds a row to the `
 
 ### GET `/template/1`
 
-Requires a cookie granting admin privileges. Renders with the data in the query string.
+Requires a cookie granting admin privileges and `AUTH_SERVER` to be defined. Renders with the data in the query string.
 
 ### POST `/template/1`
 
-Requires a cookie granting admin privileges. Renders with the data in the body.
+Requires a cookie granting admin privileges and `AUTH_SERVER` to be defined. Renders with the data in the body.
+
+### GET `/status`
+
+Always responds with an HTTP 204.
+
+### POST `/send`
+
+Requires a service cookie and `AUTH_SERVER` to be defined. The body should contain:
+
+-	`mailing_list` -- The name of the mailing list.
+-	`template` -- The name of the template.
+-	`data` -- A JSON string containing the data to render into the template.
+-	`email` -- The email address to send to.
+-	`subject` -- The subject line of the email.
+
+If everything is valid, will respond with an HTTP 202.

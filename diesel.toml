@@ -1,0 +1,2 @@
+[print_schema.filter]
+only_tables = ["mailer_lists", "mailer_queue", "mailer_templates", "mailer_unsubscribes"]

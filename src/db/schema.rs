@@ -1,12 +1,12 @@
 table! {
-    mailing_lists (id) {
+    mailer_lists (id) {
         id -> Unsigned<Integer>,
         name -> Varchar,
     }
 }
 
 table! {
-    mail_to_send (id) {
+    mailer_queue (id) {
         id -> Unsigned<Integer>,
         template_id -> Unsigned<Integer>,
         data -> Longtext,
@@ -18,15 +18,7 @@ table! {
 }
 
 table! {
-    mail_unsubscribes (id) {
-        id -> Unsigned<Integer>,
-        email -> Varchar,
-        mailing_list_id -> Unsigned<Integer>,
-    }
-}
-
-table! {
-    templates (id) {
+    mailer_templates (id) {
         id -> Unsigned<Integer>,
         mailing_list_id -> Unsigned<Integer>,
         name -> Varchar,
@@ -35,13 +27,21 @@ table! {
     }
 }
 
-joinable!(mail_to_send -> templates (template_id));
-joinable!(mail_unsubscribes -> mailing_lists (mailing_list_id));
-joinable!(templates -> mailing_lists (mailing_list_id));
+table! {
+    mailer_unsubscribes (id) {
+        id -> Unsigned<Integer>,
+        email -> Varchar,
+        mailing_list_id -> Unsigned<Integer>,
+    }
+}
+
+joinable!(mailer_queue -> mailer_templates (template_id));
+joinable!(mailer_templates -> mailer_lists (mailing_list_id));
+joinable!(mailer_unsubscribes -> mailer_lists (mailing_list_id));
 
 allow_tables_to_appear_in_same_query!(
-    mailing_lists,
-    mail_to_send,
-    mail_unsubscribes,
-    templates,
+    mailer_lists,
+    mailer_queue,
+    mailer_templates,
+    mailer_unsubscribes,
 );

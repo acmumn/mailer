@@ -17,7 +17,7 @@ use pulldown_cmark::{self, html::push_html};
 use tera::{Context, Tera};
 use tokio_threadpool::blocking;
 
-use db::schema::{mail_to_send, mail_unsubscribes, mailing_lists, templates};
+use db::schema::{mailer_lists, mailer_queue, mailer_templates, mailer_unsubscribes};
 use {Error, ErrorKind, Result};
 
 /// An HTML or Markdown document.
@@ -46,9 +46,9 @@ impl DB {
     /// Gets a mailing list's ID from its name.
     pub fn get_mailing_list_id(&self, name: String) -> impl Future<Item = u32, Error = Error> {
         self.async_query(move |conn| {
-            mailing_lists::table
-                .filter(mailing_lists::name.eq(&name))
-                .select(mailing_lists::id)
+            mailer_lists::table
+                .filter(mailer_lists::name.eq(&name))
+                .select(mailer_lists::id)
                 .first(conn)
         })
     }
@@ -56,9 +56,9 @@ impl DB {
     /// Gets a mailing list's name from its ID.
     pub fn get_mailing_list_name(&self, id: u32) -> impl Future<Item = String, Error = Error> {
         self.async_query(move |conn| {
-            mailing_lists::table
-                .filter(mailing_lists::id.eq(id))
-                .select(mailing_lists::name)
+            mailer_lists::table
+                .filter(mailer_lists::id.eq(id))
+                .select(mailer_lists::name)
                 .first(conn)
         })
     }
@@ -70,37 +70,38 @@ impl DB {
     ) -> impl Future<Item = Option<(u32, u32, u32, String, String, String)>, Error = Error> {
         self.async_query(move |conn| {
             conn.transaction(|| {
-                let o = mail_to_send::table
-                    .inner_join(templates::table)
+                let o = mailer_queue::table
+                    .inner_join(mailer_templates::table)
                     .inner_join(
-                        mailing_lists::table.on(templates::mailing_list_id.eq(mailing_lists::id)),
+                        mailer_lists::table
+                            .on(mailer_templates::mailing_list_id.eq(mailer_lists::id)),
                     )
                     .left_join(
-                        mail_unsubscribes::table
-                            .on(mail_to_send::email.eq(mail_unsubscribes::email)),
+                        mailer_unsubscribes::table
+                            .on(mailer_queue::email.eq(mailer_unsubscribes::email)),
                     )
                     .filter(
                         diesel::dsl::not(
-                            mail_unsubscribes::email
+                            mailer_unsubscribes::email
                                 .is_not_null()
-                                .and(mail_unsubscribes::mailing_list_id.eq(mailing_lists::id)),
-                        ).and(mail_to_send::send_started.eq(false)),
+                                .and(mailer_unsubscribes::mailing_list_id.eq(mailer_lists::id)),
+                        ).and(mailer_queue::send_started.eq(false)),
                     )
                     .select((
-                        mail_to_send::id,
-                        templates::mailing_list_id,
-                        mail_to_send::template_id,
-                        mail_to_send::email,
-                        mail_to_send::subject,
-                        mail_to_send::data,
+                        mailer_queue::id,
+                        mailer_templates::mailing_list_id,
+                        mailer_queue::template_id,
+                        mailer_queue::email,
+                        mailer_queue::subject,
+                        mailer_queue::data,
                     ))
                     .first(conn)
                     .optional()?;
 
                 if let Some(data) = o {
                     let (id, _, _, _, _, _) = data;
-                    diesel::update(mail_to_send::table.filter(mail_to_send::id.eq(id)))
-                        .set(mail_to_send::send_started.eq(true))
+                    diesel::update(mailer_queue::table.filter(mailer_queue::id.eq(id)))
+                        .set(mailer_queue::send_started.eq(true))
                         .execute(conn)
                         .map(|_| Some(data))
                 } else {
@@ -117,10 +118,10 @@ impl DB {
         name: String,
     ) -> impl Future<Item = TemplateContents, Error = Error> {
         self.async_query(move |conn| {
-            templates::table
-                .filter(templates::mailing_list_id.eq(mailing_list_id))
-                .filter(templates::name.eq(&name))
-                .select((templates::contents, templates::markdown))
+            mailer_templates::table
+                .filter(mailer_templates::mailing_list_id.eq(mailing_list_id))
+                .filter(mailer_templates::name.eq(&name))
+                .select((mailer_templates::contents, mailer_templates::markdown))
                 .first::<(String, bool)>(conn)
                 .map(|(contents, markdown)| {
                     if markdown {
@@ -135,8 +136,8 @@ impl DB {
     /// Returns a list of mailing lists.
     pub fn list_mailing_lists(&self) -> impl Future<Item = Vec<(u32, String)>, Error = Error> {
         self.async_query(move |conn| {
-            mailing_lists::table
-                .select((mailing_lists::id, mailing_lists::name))
+            mailer_lists::table
+                .select((mailer_lists::id, mailer_lists::name))
                 .load(conn)
         })
     }
@@ -147,14 +148,14 @@ impl DB {
         mailing_list_id: u32,
     ) -> impl Future<Item = Vec<String>, Error = Error> {
         self.async_query(move |conn| {
-            templates::table
-                .filter(templates::mailing_list_id.eq(mailing_list_id))
-                .select(templates::name)
+            mailer_templates::table
+                .filter(mailer_templates::mailing_list_id.eq(mailing_list_id))
+                .select(mailer_templates::name)
                 .load(conn)
         })
     }
 
-    /// Loads a template recursively, returning a Tera instance with the required templates, as
+    /// Loads a template recursively, returning a Tera instance with the required mailer_templates, as
     /// well as the template's name.
     pub fn load_template(
         &self,
@@ -164,17 +165,21 @@ impl DB {
         // resolved. There also may be a more efficient way to write the query (to do one instead
         // of two), but that's probably small potatoes.
         self.async_query(move |conn| -> Result<_> {
-            let (mailing_list_id, name) = templates::table
-                .filter(templates::id.eq(id))
-                .select((templates::mailing_list_id, templates::name))
+            let (mailing_list_id, name) = mailer_templates::table
+                .filter(mailer_templates::id.eq(id))
+                .select((mailer_templates::mailing_list_id, mailer_templates::name))
                 .first::<(u32, String)>(conn)?;
-            let templates = templates::table
-                .filter(templates::mailing_list_id.eq(mailing_list_id))
-                .select((templates::name, templates::contents, templates::markdown))
+            let mailer_templates = mailer_templates::table
+                .filter(mailer_templates::mailing_list_id.eq(mailing_list_id))
+                .select((
+                    mailer_templates::name,
+                    mailer_templates::contents,
+                    mailer_templates::markdown,
+                ))
                 .load::<(String, String, bool)>(conn)?;
 
             let mut tera = Tera::default();
-            for (name, contents, markdown) in templates {
+            for (name, contents, markdown) in mailer_templates {
                 let contents = if markdown {
                     let mut html = String::new();
                     push_html(&mut html, pulldown_cmark::Parser::new(&contents));
@@ -193,8 +198,8 @@ impl DB {
     /// Creates a new mailing list with the given name.
     pub fn new_mailing_list(&self, name: String) -> impl Future<Item = (), Error = Error> {
         self.async_query(move |conn| {
-            diesel::insert_into(mailing_lists::table)
-                .values(mailing_lists::name.eq(&name))
+            diesel::insert_into(mailer_lists::table)
+                .values(mailer_lists::name.eq(&name))
                 .execute(conn)
                 .map(|_| ())
         })
@@ -209,19 +214,19 @@ impl DB {
         self.async_query(move |conn| {
             conn.transaction(|| {
                 let already_exists = diesel::select(diesel::dsl::exists(
-                    templates::table
-                        .filter(templates::mailing_list_id.eq(mailing_list_id))
-                        .filter(templates::name.eq(&name)),
+                    mailer_templates::table
+                        .filter(mailer_templates::mailing_list_id.eq(mailing_list_id))
+                        .filter(mailer_templates::name.eq(&name)),
                 )).get_result(conn)?;
                 if already_exists {
                     return Err(Error::from(ErrorKind::TemplateExists(name.clone())));
                 }
 
-                diesel::insert_into(templates::table)
+                diesel::insert_into(mailer_templates::table)
                     .values((
-                        templates::mailing_list_id.eq(mailing_list_id),
-                        templates::name.eq(&name),
-                        templates::contents.eq(""),
+                        mailer_templates::mailing_list_id.eq(mailing_list_id),
+                        mailer_templates::name.eq(&name),
+                        mailer_templates::contents.eq(""),
                     ))
                     .execute(conn)?;
                 Ok(())
@@ -232,9 +237,9 @@ impl DB {
     /// Marks the sending of an email (by ID) as finished.
     pub fn set_email_done(&self, id: u32) -> impl Future<Item = (), Error = Error> {
         self.async_query(move |conn| {
-            diesel::update(mail_to_send::table.filter(mail_to_send::id.eq(id)))
-                .filter(mail_to_send::send_started.eq(true))
-                .set(mail_to_send::send_done.eq(true))
+            diesel::update(mailer_queue::table.filter(mailer_queue::id.eq(id)))
+                .filter(mailer_queue::send_started.eq(true))
+                .set(mailer_queue::send_done.eq(true))
                 .execute(conn)
                 .map(|_| ())
         })
@@ -248,17 +253,17 @@ impl DB {
         contents: TemplateContents,
     ) -> impl Future<Item = (), Error = Error> {
         self.async_query(move |conn| {
-            let target = templates::table
-                .filter(templates::mailing_list_id.eq(mailing_list_id))
-                .filter(templates::name.eq(&name));
+            let target = mailer_templates::table
+                .filter(mailer_templates::mailing_list_id.eq(mailing_list_id))
+                .filter(mailer_templates::name.eq(&name));
             let (contents, markdown) = match contents {
                 TemplateContents::Html(ref s) => (s, false),
                 TemplateContents::Markdown(ref s) => (s, true),
             };
             diesel::update(target)
                 .set((
-                    templates::contents.eq(contents),
-                    templates::markdown.eq(markdown),
+                    mailer_templates::contents.eq(contents),
+                    mailer_templates::markdown.eq(markdown),
                 ))
                 .execute(conn)
                 .map(|_| ())
@@ -272,10 +277,10 @@ impl DB {
         mailing_list_id: u32,
     ) -> impl Future<Item = (), Error = Error> {
         self.async_query(move |conn| {
-            diesel::insert_into(mail_unsubscribes::table)
+            diesel::insert_into(mailer_unsubscribes::table)
                 .values((
-                    mail_unsubscribes::email.eq(&email),
-                    mail_unsubscribes::mailing_list_id.eq(mailing_list_id),
+                    mailer_unsubscribes::email.eq(&email),
+                    mailer_unsubscribes::mailing_list_id.eq(mailing_list_id),
                 ))
                 .execute(conn)
                 .map(|_| ())
