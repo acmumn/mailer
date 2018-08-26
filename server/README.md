@@ -10,7 +10,8 @@ Configured via either environment variables or a `.env` file. The following envi
 
 ```
 # Required
-AUTH_SERVER="http://auth" # The URL of the auth server to use
+AUTH_SERVER="https://auth.acm.umn.edu" # The URL of the auth server to use
+AUTH_TOKEN="..." # This service's authentication token
 BASE_URL="https://mail.acm.umn.edu" # Base URL for unsub links and template examples
 DATABASE_URL="mysql://root:password@localhost/acm" # MySQL database URL
 SMTP_FROM="example@gmail.com" # SMTP From header

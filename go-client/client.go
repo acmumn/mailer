@@ -28,8 +28,8 @@ type Client struct {
 
 // New creates a new mailer service client. If the authCookie is "", none will be sent, restricting
 // the client to the Status and Unsubscribe methods.
-func New(baseURL *url.URL, authCookie string) Client {
-	return Client{
+func New(baseURL *url.URL, authCookie string) *Client {
+	return &Client{
 		Timeout:    5 * time.Second,
 		authCookie: authCookie,
 	}
