@@ -7,8 +7,8 @@ import (
 )
 
 // Send enqueues a mail.
-func (c *Client) Send(mailingList, template string, data map[string]interface{}, email string,
-	subject string) error {
+func (c *Client) Send(mailingList, template, email, subject string,
+	data map[string]interface{}) error {
 
 	client, err := c.client(true)
 	if err != nil {
