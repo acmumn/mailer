@@ -10,6 +10,7 @@ Configured via either environment variables or a `.env` file. The following envi
 
 ```
 # Required
+AUTH_SERVER="http://auth" # The URL of the auth server to use
 BASE_URL="https://mail.acm.umn.edu" # Base URL for unsub links and template examples
 DATABASE_URL="mysql://root:password@localhost/acm" # MySQL database URL
 SMTP_FROM="example@gmail.com" # SMTP From header
@@ -17,7 +18,6 @@ SMTP_PASS="hunter2" # SMTP password
 SMTP_USER="example@gmail.com" # SMTP username
 
 # Optional
-AUTH_SERVER="http://auth" # The URL of the auth server to use
 HOST="::" # IP to bind to
 PORT=8000 # Port to serve unsub links and template examples on
 SMTP_ADDR="smtp.gmail.com" # SMTP server hostname
@@ -28,21 +28,21 @@ SYSLOG_SERVER="" # If non-empty, the syslog server to send logs to
 URL Structure
 -------------
 
-### GET `/unsubscribe/1?email=example@gmail.com`
+### GET `/unsubscribe/<list-id>?email=example@gmail.com`
 
 Serves a form asking the user to confirm that they want to be removed from the list.
 
-### POST `/unsubscribe/1`
+### POST `/unsubscribe/<list-id>`
 
-The body should contain the same `email` parameter as above. Adds a row to the `mail_unsubscribes` table, preventing email form being sent to that address from the given mailing list.
+Adds a row to the `mail_unsubscribes` table, preventing email form being sent to that address from the given mailing list. A request `Content-Type` of `application/x-www-form-urlencoded` is required. The body should contain the same `email` parameter as above.
 
-### GET `/template/1`
+### GET `/template/<template-id>`
 
-Requires a cookie granting admin privileges and `AUTH_SERVER` to be defined. Renders with the data in the query string.
+Requires an authentication token granting admin privileges. Renders the template with the data in the query string.
 
-### POST `/template/1`
+### POST `/template/<template-id>`
 
-Requires a cookie granting admin privileges and `AUTH_SERVER` to be defined. Renders with the data in the body.
+Requires an authentication token granting admin privileges. A request `Content-Type` of `application/x-www-form-urlencoded` is required. Renders the template with the data in the body.
 
 ### GET `/status`
 
@@ -50,7 +50,7 @@ Always responds with an HTTP 204.
 
 ### POST `/send`
 
-Requires a service cookie and `AUTH_SERVER` to be defined. The body should contain:
+Requires a service authentication token. A request `Content-Type` of `application/x-www-form-urlencoded` is required. The body of the request should contain:
 
 -	`mailing_list` -- The name of the mailing list.
 -	`template` -- The name of the template.
