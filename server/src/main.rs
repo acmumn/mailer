@@ -94,7 +94,7 @@ struct Options {
     host: String,
 
     /// The port to serve on.
-    #[structopt(short = "p", long = "port", env = "PORT", default_value = "8000")]
+    #[structopt(short = "p", long = "port", env = "PORT", default_value = "8001")]
     port: u16,
 
     /// The SMTP server to use.
